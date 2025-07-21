@@ -1,74 +1,90 @@
 import streamlit as st
 import time
+from datetime import datetime
+import pandas as pd
+import plotly.graph_objects as go
+
 from bybit_stream import candle_data, start_websocket
 
-st.set_page_config(page_title="Crypto Live Monitor", layout="wide")
-st.title("📊 Live Bybit Crypto Monitor")
+# Page Setup
+st.set_page_config(page_title="Crypto Live Tracker", layout="wide")
+st.title("📈 Real-Time Crypto Candle Monitor")
 
+# Start WebSocket
 start_websocket()
 
-st.markdown("### 💰 Live Prices (updated every second)")
+# UI placeholders
+col1, col2 = st.columns(2)
+price_placeholder = col1.empty()
+time_placeholder = col2.empty()
 
-# Live price display area
-price_placeholder = st.empty()
-
-st.markdown("---")
-st.markdown("### 📡 Alert Section (3-minute candle logic)")
-
-# Alert display area
+chart_placeholder = st.empty()
 alert_placeholder = st.empty()
+
+# Crypto symbols
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def check_conditions(symbol):
     data = candle_data.get(symbol, [])
     if len(data) < 4:
         return None
 
-    latest_idx = -4  # pick 4th last closed candle
-    ref_candle = data[latest_idx]
-    next_candles = data[latest_idx+1:latest_idx+4]
+    idx = -4  # 4th last candle (completed one)
+    ref_candle = data[idx]
+    next_3 = data[idx+1:idx+4]
 
     high = ref_candle["high"]
     low = ref_candle["low"]
 
-    all_within_range = all(
-        c["high"] <= high and c["low"] >= low for c in next_candles
-    )
+    all_inside = all(c["high"] <= high and c["low"] >= low for c in next_3)
 
-    if all_within_range:
-        return {
-            "symbol": symbol,
-            "ref_time": ref_candle["timestamp"],
-            "high": high,
-            "low": low
-        }
+    if all_inside:
+        return ref_candle
     return None
+
+def plot_candles(symbol, ref_candle):
+    data = candle_data.get(symbol, [])
+    if not data or len(data) < 10:
+        return None
+
+    df = pd.DataFrame(data[-10:])  # Last 10 candles
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit='ms')
+    fig = go.Figure(data=[go.Candlestick(
+        x=df["timestamp"],
+        open=df["open"],
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        increasing_line_color='green',
+        decreasing_line_color='red'
+    )])
+    fig.update_layout(title=f"{symbol} - Last 10 Candles", xaxis_title="Time", yaxis_title="Price")
+    return fig
 
 while True:
     time.sleep(1)
 
-    # ---- Show Live Prices ----
-    live_prices = ""
-    for sym in ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]:
-        candles = candle_data.get(sym, [])
-        if candles:
-            last_close = candles[-1]["close"]
-            live_prices += f"**{sym}**: {last_close}\n\n"
+    # 1️⃣ Show Live Prices
+    prices_text = "### 💰 **Live Prices**\n\n"
+    for sym in symbols:
+        last_candle = candle_data.get(sym, [])
+        if last_candle:
+            prices_text += f"**{sym}**: {last_candle[-1]['close']}\n\n"
         else:
-            live_prices += f"**{sym}**: waiting...\n\n"
+            prices_text += f"**{sym}**: Loading...\n\n"
+    price_placeholder.markdown(prices_text)
 
-    price_placeholder.markdown(live_prices)
+    # 2️⃣ Show Current System Time
+    now = datetime.now().strftime("%H:%M:%S")
+    time_placeholder.markdown(f"### ⏰ **Live Time**: {now}")
 
-    # ---- Check & Show Alerts ----
-    alerts = []
-    for sym in ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]:
-        result = check_conditions(sym)
-        if result:
-            alerts.append(result)
+    # 3️⃣ Show Alerts with Chart
+    for sym in symbols:
+        ref = check_conditions(sym)
+        if ref:
+            ref_time = datetime.fromtimestamp(ref["timestamp"] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            alert_placeholder.warning(f"🔔 **{sym} ALERT**: 3 candles stayed inside range of {ref_time} | "
+                                      f"High: {ref['high']} | Low: {ref['low']}")
 
-    with alert_placeholder.container():
-        if alerts:
-            for alert in alerts:
-                st.error(f"🔔 ALERT: {alert['symbol']} stayed inside candle from {alert['ref_time']} "
-                         f"High: {alert['high']} | Low: {alert['low']}")
-        else:
-            st.info("⏳ No alert at the moment.")
+            # 4️⃣ Show Chart
+            fig = plot_candles_
