@@ -1,7 +1,6 @@
 # bybit_stream.py
 
-import websocket
-import json
+import websocket, json
 from threading import Thread
 from data_buffer import candle_data, prices
 
@@ -12,44 +11,32 @@ def on_message(ws, message):
     if 'topic' not in data: return
 
     topic = data['topic']
-    
+
     if topic.startswith("kline.3m."):
         symbol = topic.split(".")[-1]
-        kline = data["data"]
+        k = data["data"]
         candle = {
-            "timestamp": kline["start"],
-            "open": float(kline["open"]),
-            "high": float(kline["high"]),
-            "low": float(kline["low"]),
-            "close": float(kline["close"])
+            "timestamp": k["start"],
+            "open": float(k["open"]),
+            "high": float(k["high"]),
+            "low": float(k["low"]),
+            "close": float(k["close"])
         }
         if symbol in candle_data:
-            candles = candle_data[symbol]
-            candles.append(candle)
-            if len(candles) > 100:
-                candles.pop(0)
-    
+            candle_data[symbol].append(candle)
+            if len(candle_data[symbol]) > 100:
+                candle_data[symbol].pop(0)
+
     elif topic.startswith("tickers."):
-        for ticker in data["data"]:
-            symbol = ticker["symbol"]
+        for t in data["data"]:
+            symbol = t["symbol"]
             if symbol in prices:
-                prices[symbol] = float(ticker["lastPrice"])
+                prices[symbol] = float(t["lastPrice"])
 
 def on_open(ws):
-    sub_msgs = []
-
-    for symbol in SYMBOLS:
-        sub_msgs.append({
-            "op": "subscribe",
-            "args": [f"kline.3m.{symbol}"]
-        })
-    sub_msgs.append({
-        "op": "subscribe",
-        "args": ["tickers"]
-    })
-
-    for msg in sub_msgs:
-        ws.send(json.dumps(msg))
+    args = [f"kline.3m.{s}" for s in SYMBOLS]
+    args += [f"tickers.{s}" for s in SYMBOLS]
+    ws.send(json.dumps({"op": "subscribe", "args": args}))
 
 def start_websocket():
     def run():
@@ -59,5 +46,4 @@ def start_websocket():
             on_message=on_message
         )
         ws.run_forever()
-
     Thread(target=run, daemon=True).start()

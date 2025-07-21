@@ -1,6 +1,5 @@
 # data_buffer.py
 
-# Dictionary to store candle data and prices globally
 candle_data = {
     "BTCUSDT": [],
     "ETHUSDT": [],

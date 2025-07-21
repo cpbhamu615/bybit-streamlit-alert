@@ -1,42 +1,59 @@
+# app.py
+
 import streamlit as st
+import pandas as pd
+import time
 from datetime import datetime
 import pytz
-import pandas as pd
-from bybit_stream import candle_data, prices
-import time
+from data_buffer import candle_data, prices
+from bybit_stream import start_websocket
 
-st.set_page_config(layout="wide")
+# Setup
+st.set_page_config(page_title="Crypto Monitor", layout="wide")
 st.title("📈 Real-Time Crypto Candle Monitor")
 
-# Indian Time
-now = datetime.now(pytz.timezone("Asia/Kolkata"))
-st.write(f"⏰ Current Time: {now.strftime('%H:%M:%S')}")
+# Start WebSocket once
+if "started" not in st.session_state:
+    start_websocket()
+    st.session_state.started = True
 
-# Live Prices
+# Show current Indian time
+now = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S")
+st.markdown(f"⏰ Current Time: `{now}`")
+
+# Show Live Prices
 st.subheader("💰 Live Prices")
-for symbol, price in prices.items():
-    st.write(f"{symbol}: {price}")
+for sym in ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]:
+    st.write(f"**{sym}:** {prices[sym]}")
 
-# Tabular Alert Section
+# Process & show alerts
 st.subheader("🔔 Alerts")
-for symbol, candles in candle_data.items():
+alerts = []
+
+for sym, candles in candle_data.items():
     if len(candles) >= 4:
         selected = candles[-4]
-        c1, c2, c3 = candles[-3], candles[-2], candles[-1]
-        selected_time = datetime.fromtimestamp(selected['timestamp'], pytz.timezone("Asia/Kolkata")).strftime("%H:%M")
-        rows = [{
-            "Name": symbol,
-            "selected candle time": selected_time,
-            "High": selected["high"],
-            "Low": selected["low"],
-            "1st candle High": c1["high"], "1st candle Low": c1["low"],
-            "2nd candle High": c2["high"], "2nd candle Low": c2["low"],
-            "3rd candle High": c3["high"], "3rd candle Low": c3["low"],
-            "Alert": "YES" if all(selected["low"] <= c["low"] <= selected["high"] and selected["low"] <= c["high"] <= selected["high"] for c in [c1, c2, c3]) else "NO"
-        }]
-        df = pd.DataFrame(rows)
-        st.table(df)
+        next_3 = candles[-3:]
+        high = selected["high"]
+        low = selected["low"]
+        inside = all(c["high"] <= high and c["low"] >= low for c in next_3)
+        if inside:
+            alerts.append({
+                "Symbol": sym,
+                "Time": datetime.fromtimestamp(selected["timestamp"], pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S"),
+                "High": high,
+                "Low": low,
+                "Alert": "Yes ✅"
+            })
 
-# Auto Refresh Every 5 Seconds
-time.sleep(5)
-st.experimental_rerun()
+if alerts:
+    st.dataframe(pd.DataFrame(alerts), use_container_width=True)
+else:
+    st.info("No valid alerts yet.")
+
+# Auto refresh every 5 seconds
+countdown = st.empty()
+for i in range(5, 0, -1):
+    countdown.text(f"Refreshing in {i} seconds...")
+    time.sleep(1)
+st.rerun()
