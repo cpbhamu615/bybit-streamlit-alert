@@ -1,61 +1,87 @@
-# app.py
-
 import streamlit as st
-import pandas as pd
 import time
 from datetime import datetime
 import pytz
-from data_buffer import candle_data, prices
-from bybit_stream import start_websocket
+from bybit_stream import candle_data, start_websocket
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Crypto Live Monitor", layout="wide")
+# App title
+st.set_page_config(layout="wide")
 st.title("📈 Real-Time Crypto Candle Monitor")
 
-if "started" not in st.session_state:
+# Start WebSocket only once
+if "websocket_started" not in st.session_state:
     start_websocket()
-    st.session_state.started = True
+    st.session_state.websocket_started = True
 
-# Time
-now = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S")
-st.markdown(f"⏰ Current Time: `{now}`")
-
-# Prices
-st.subheader("💰 Live Prices")
-price_cols = st.columns(4)
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-for i, sym in enumerate(symbols):
-    with price_cols[i]:
-        st.metric(label=sym, value=prices[sym])
 
-# Alerts Table
-st.subheader("🔔 Alerts")
-alerts = []
+# Auto-refresh every 10 seconds
+REFRESH_INTERVAL = 10  # seconds
+
+# 🔄 Auto refresh logic using Streamlit's built-in rerun
+if "last_run" not in st.session_state:
+    st.session_state.last_run = time.time()
+
+# Time now
+now = time.time()
+
+# If more than REFRESH_INTERVAL passed, rerun
+if now - st.session_state.last_run > REFRESH_INTERVAL:
+    st.session_state.last_run = now
+    st.experimental_rerun()  # 🚀 rerun the app automatically
+
+# --- UI ---
+
+st.subheader("💰 Live Prices")
 for sym in symbols:
-    candles = candle_data[sym]
-    if len(candles) >= 4:
-        selected = candles[-4]
-        next_3 = candles[-3:]
-        high = selected["high"]
-        low = selected["low"]
-        inside = all(c["high"] <= high and c["low"] >= low for c in next_3)
-        if inside:
-            alerts.append({
-                "Symbol": sym,
-                "Time": datetime.fromtimestamp(selected["timestamp"], pytz.timezone("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S"),
-                "High": high,
-                "Low": low,
-                "Status": "3 candles inside range ✅"
-            })
+    data = candle_data.get(sym, [])
+    if data:
+        st.write(f"**{sym}**: {data[-1]['close']}")
 
-if alerts:
-    df = pd.DataFrame(alerts)
-    st.dataframe(df, use_container_width=True)
-else:
-    st.info("No alerts yet.")
+# Live Time (IST)
+current_time = datetime.now(pytz.timezone("Asia/Kolkata"))
+st.write(f"⏰ Live Time: {current_time.strftime('%H:%M:%S')}")
 
-# Auto-refresh
-countdown = st.empty()
-for i in range(5, 0, -1):
-    countdown.text(f"Refreshing in {i} seconds...")
-    time.sleep(1)
-st.rerun()
+st.subheader("🔔 Alerts")
+
+# --- Chart & Alert logic ---
+def plot_candles(symbol, candle):
+    fig, ax = plt.subplots(figsize=(4, 2))
+    o = float(candle["open"])
+    h = float(candle["high"])
+    l = float(candle["low"])
+    c = float(candle["close"])
+    color = "green" if c >= o else "red"
+    ax.plot([1, 1], [l, h], color="black")
+    ax.bar(1, abs(c - o), bottom=min(o, c), width=0.5, color=color)
+    ax.set_xticks([])
+    ax.set_title(symbol)
+    return fig
+
+for sym in symbols:
+    candles = candle_data.get(sym)
+
+    if not isinstance(candles, list) or len(candles) < 4:
+        continue
+
+    ref = candles[-4]
+    next_3 = candles[-3:]
+
+    high = float(ref["high"])
+    low = float(ref["low"])
+
+    all_inside = all(
+        low <= float(c["low"]) and float(c["high"]) <= high for c in next_3
+    )
+
+    if all_inside:
+        ts = datetime.fromtimestamp(ref["start"] / 1000, pytz.timezone("Asia/Kolkata"))
+        st.warning(
+            f"{sym} ALERT: 3 candles stayed inside range of {ts.strftime('%Y-%m-%d %H:%M:%S')} | "
+            f"High: {high} | Low: {low}"
+        )
+
+    st.markdown(f"#### 📊 {sym} Chart")
+    fig = plot_candles(sym, ref)
+    st.pyplot(fig)
