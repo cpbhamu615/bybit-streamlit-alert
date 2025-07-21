@@ -41,7 +41,7 @@ def on_open(ws):
 def start_websocket():
     def run():
         ws = websocket.WebSocketApp(
-            "wss://stream.bybit.com/v5/public/linear",
+            "wss://stream.bybit.com/v5/public/spot"
             on_open=on_open,
             on_message=on_message
         )
