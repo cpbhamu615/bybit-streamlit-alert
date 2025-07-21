@@ -1,52 +1,66 @@
+# app.py
+
 import streamlit as st
-from bybit_stream import candle_data, start_websocket
-from chart import plot_candles
 from datetime import datetime
 import pytz
-import time
+from bybit_stream import candle_data, start_websocket
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
-st.set_page_config(page_title="Crypto Candle Alert", layout="centered")
+st.set_page_config(layout="wide")
 st.title("📈 Real-Time Crypto Candle Monitor")
 
-st.markdown("### 💰 Live Prices")
+# Start WebSocket only once
+if "websocket_started" not in st.session_state:
+    start_websocket()
+    st.session_state.websocket_started = True
 
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
-# Start WebSocket (once)
-if 'ws_started' not in st.session_state:
-    start_websocket(symbols)
-    st.session_state.ws_started = True
+st.subheader("💰 Live Prices")
 
-# Display live prices
-prices = []
+# Show latest price
 for sym in symbols:
-    latest = candle_data.get(sym, [])
-    if latest:
-        price = float(latest[-1]["close"])
-        prices.append((sym, price))
-        st.write(f"**{sym}**: {price}")
-    else:
-        st.write(f"**{sym}**: Loading...")
+    data = candle_data.get(sym, [])
+    if data:
+        last = data[-1]
+        st.write(f"**{sym}**: {last['close']}")
 
-# ✅ Correct timezone string
-now = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S")
-st.markdown(f"### ⏰ Live Time: {now}")
+# Live Time
+now = datetime.now(pytz.timezone("Asia/Kolkata"))
+st.write(f"⏰ Live Time: {now.strftime('%H:%M:%S')}")
 
-# Alert system
-st.markdown("### 🔔 Alerts")
+st.subheader("🔔 Alerts")
+
+# Alert logic + chart plotting
+def plot_candles(symbol, candle):
+    fig, ax = plt.subplots(figsize=(4, 2))
+    o = float(candle["open"])
+    h = float(candle["high"])
+    l = float(candle["low"])
+    c = float(candle["close"])
+    color = "green" if c >= o else "red"
+    ax.plot([1, 1], [l, h], color="black")
+    ax.bar(1, abs(c - o), bottom=min(o, c), width=0.5, color=color)
+    ax.set_xticks([])
+    ax.set_title(symbol)
+    return fig
 
 for sym in symbols:
-    candles = candle_data.get(sym, [])
-    if len(candles) < 4:
+    candles = candle_data.get(sym)
+
+    if not isinstance(candles, list) or len(candles) < 4:
         continue
 
     ref = candles[-4]
-    next_3 = candles[-3:]   # ✅ Correct line here
+    next_3 = candles[-3:]
 
     high = float(ref["high"])
     low = float(ref["low"])
 
-    all_inside = all(low <= float(c["low"]) and float(c["high"]) <= high for c in next_3)
+    all_inside = all(
+        low <= float(c["low"]) and float(c["high"]) <= high for c in next_3
+    )
 
     if all_inside:
         ts = datetime.fromtimestamp(ref["start"] / 1000, pytz.timezone("Asia/Kolkata"))

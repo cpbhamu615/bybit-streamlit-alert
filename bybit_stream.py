@@ -1,49 +1,34 @@
-import websocket
+# bybit_stream.py
+
 import json
 import threading
-from data_buffer import candle_data
+import websocket
+from data_buffer import update_candles
+
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+interval = "3"  # 3-minute candles
+candle_data = {}
 
 def on_message(ws, message):
-    data = json.loads(message)
-
-    if "topic" in data and "data" in data:
-        topic = data["topic"]
-        if topic.startswith("kline.3."):
-            symbol = topic.split(".")[2]
-            for candle in data["data"]:
-                candle_data[symbol].append(candle)
+    msg = json.loads(message)
+    if "topic" in msg and msg["topic"].startswith("kline"):
+        data = msg["data"][0]
+        topic = msg["topic"]
+        symbol = topic.split(".")[-1]
+        update_candles(symbol, data)
 
 def on_open(ws):
     print("✅ Connected to Bybit WebSocket")
-    subscribe_message = {
-        "op": "subscribe",
-        "args": [
-            "kline.3.BTCUSDT",
-            "kline.3.ETHUSDT",
-            "kline.3.BNBUSDT",
-            "kline.3.SOLUSDT"
-        ]
-    }
-    ws.send(json.dumps(subscribe_message))
-    print("📡 Subscription message sent")
+    for sym in symbols:
+        sub_msg = {
+            "op": "subscribe",
+            "args": [f"kline.{interval}.{sym}"]
+        }
+        ws.send(json.dumps(sub_msg))
 
-def on_error(ws, error):
-    print(f"❌ Error: {error}")
-
-def on_close(ws):
-    print("🔌 WebSocket closed")
-
-def start_websocket(symbols):
-    def run():
-        ws = websocket.WebSocketApp(
-            "wss://stream.bybit.com/v5/public/linear",
-            on_open=on_open,
-            on_message=on_message,
-            on_error=on_error,
-            on_close=on_close
-        )
-        ws.run_forever()
-
-    thread = threading.Thread(target=run)
+def start_websocket():
+    url = "wss://stream.bybit.com/v5/public/linear"
+    ws = websocket.WebSocketApp(url, on_open=on_open, on_message=on_message)
+    thread = threading.Thread(target=ws.run_forever)
     thread.daemon = True
     thread.start()
