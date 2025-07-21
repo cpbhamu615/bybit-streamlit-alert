@@ -1,49 +1,36 @@
-# bybit_stream.py
+import asyncio
+import websockets
+import json
+from datetime import datetime
 
-import websocket, json
-from threading import Thread
-from data_buffer import candle_data, prices
+async def bybit_candle_stream():
+    url = "wss://stream.bybit.com/v5/public/linear"  # For USDT Perpetual
+    symbol = "BTCUSDT"
+    interval = "3"
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-
-def on_message(ws, message):
-    print("MESSAGE RECEIVED:", message)  
-    data = json.loads(message)
-    if 'topic' not in data: return
-    topic = data['topic']
-
-    if topic.startswith("kline.3."):
-        symbol = topic.split('.')[-1]
-        k = data["data"]
-        candle = {
-            "timestamp": k["start"],
-            "open": float(k["open"]),
-            "high": float(k["high"]),
-            "low": float(k["low"]),
-            "close": float(k["close"])
+    async with websockets.connect(url) as ws:
+        # Subscribe to 3m candle stream
+        subscribe_msg = {
+            "op": "subscribe",
+            "args": [f"kline.{interval}.{symbol}"]
         }
-        if symbol in candle_data:
-            candle_data[symbol].append(candle)
-            if len(candle_data[symbol]) > 100:
-                candle_data[symbol].pop(0)
+        await ws.send(json.dumps(subscribe_msg))
 
-    elif topic.startswith("tickers."):
-        for t in data["data"]:
-            symbol = t["symbol"]
-            if symbol in prices:
-                prices[symbol] = float(t["lastPrice"])
+        while True:
+            response = await ws.recv()
+            data = json.loads(response)
 
-def on_open(ws):
-    args = [f"kline.3.{s}" for s in SYMBOLS]
-    args += [f"tickers.{s}" for s in SYMBOLS]
-    ws.send(json.dumps({"op": "subscribe", "args": args}))
+            if "data" in data and "kline" in data["data"]:
+                kline = data["data"]["kline"]
+                candle = {
+                    "timestamp": datetime.fromtimestamp(kline["start"] / 1000).strftime("%H:%M"),
+                    "open": float(kline["open"]),
+                    "high": float(kline["high"]),
+                    "low": float(kline["low"]),
+                    "close": float(kline["close"])
+                }
+                print("LIVE CANDLE:", candle)
 
-def start_websocket():
-    def run():
-        ws = websocket.WebSocketApp(
-            "wss://stream.bybit.com/v5/public/spot"
-            on_open=on_open,
-            on_message=on_message
-        )
-        ws.run_forever()
-    Thread(target=run, daemon=True).start()
+# Run directly (for testing)
+if __name__ == "__main__":
+    asyncio.run(bybit_candle_stream())
