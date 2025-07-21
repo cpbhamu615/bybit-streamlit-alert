@@ -1,15 +1,19 @@
 # data_buffer.py
+import threading
 
-candle_data = {
-    "BTCUSDT": [],
-    "ETHUSDT": [],
-    "BNBUSDT": [],
-    "SOLUSDT": []
-}
+class CandleBuffer:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.candles = []
 
-prices = {
-    "BTCUSDT": None,
-    "ETHUSDT": None,
-    "BNBUSDT": None,
-    "SOLUSDT": None
-}
+    def add_candle(self, candle):
+        with self.lock:
+            self.candles.append(candle)
+            if len(self.candles) > 100:  # store latest 100 candles
+                self.candles.pop(0)
+
+    def get_candles(self):
+        with self.lock:
+            return list(self.candles)
+
+candle_buffer = CandleBuffer()
