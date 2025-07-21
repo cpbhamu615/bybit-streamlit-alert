@@ -1,45 +1,37 @@
 # bybit_stream.py
 
-import websocket
 import json
-from threading import Thread
-from data_buffer import buffer
+import threading
+from websocket import WebSocketApp
+from data_buffer import candle_data, prices
 
-prices = {}
-candle_data = {
-    "BTCUSDT": [],
-    "ETHUSDT": [],
-    "BNBUSDT": [],
-    "SOLUSDT": []
-}
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def on_message(ws, message):
-    msg = json.loads(message)
-    if "topic" in msg and msg["topic"].startswith("kline"):
-        symbol = msg["topic"].split(".")[-1]
-        data = msg["data"][0]
-        candle_data[symbol] = candle_data.get(symbol, [])
-        candle_data[symbol].append(data)
+    data = json.loads(message)
+    if "topic" in data and "kline" in data["topic"]:
+        symbol = data["topic"].split(".")[-1]
+        kline = data["data"][0]
+        candle_data[symbol].append(kline)
         if len(candle_data[symbol]) > 100:
-            candle_data[symbol] = candle_data[symbol][-100:]
-
-    elif "topic" in msg and msg["topic"].startswith("tickers"):
-        for ticker in msg["data"]:
-            prices[ticker["symbol"]] = ticker["last_price"]
+            candle_data[symbol].pop(0)
+    elif "topic" in data and "tickers" in data["topic"]:
+        ticker = data["data"][0]
+        symbol = ticker["symbol"]
+        prices[symbol] = ticker["last_price"]
 
 def on_open(ws):
-    print("✅ WebSocket connected")
-    symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-    for sym in symbols:
-        ws.send(json.dumps({"op": "subscribe", "args": [f"kline.3.{sym}"]}))
-    ws.send(json.dumps({"op": "subscribe", "args": ["tickers.BTCUSDT", "tickers.ETHUSDT", "tickers.BNBUSDT", "tickers.SOLUSDT"]}))
+    print("✅ Connected to Bybit WebSocket")
+    sub = {
+        "op": "subscribe",
+        "args": [f"kline.3.{sym}" for sym in SYMBOLS] + [f"tickers.{sym}" for sym in SYMBOLS]
+    }
+    ws.send(json.dumps(sub))
 
 def start_websocket():
-    def run():
-        ws = websocket.WebSocketApp(
-            "wss://stream.bybit.com/v5/public/linear",
-            on_message=on_message,
-            on_open=on_open
-        )
-        ws.run_forever()
-    Thread(target=run).start()
+    ws = WebSocketApp(
+        "wss://stream.bybit.com/v5/public/linear",
+        on_open=on_open,
+        on_message=on_message,
+    )
+    threading.Thread(target=ws.run_forever, daemon=True).start()
