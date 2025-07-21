@@ -3,3 +3,5 @@ pandas
 plotly
 websockets
 websocket-client
+matplotlib
+pytz
