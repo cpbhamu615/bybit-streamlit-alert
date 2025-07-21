@@ -28,5 +28,17 @@ for sym in symbols:
     else:
         st.write(f"**{sym}**: Loading...")
 
-# Show Indian time
-now = datetime.now(pytz.timezone("Asia/Kolka
+# ✅ Correct timezone string
+now = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S")
+st.markdown(f"### ⏰ Live Time: {now}")
+
+# Alert system
+st.markdown("### 🔔 Alerts")
+
+for sym in symbols:
+    candles = candle_data.get(sym, [])
+    if len(candles) < 4:
+        continue
+
+    ref = candles[-4]
+    next_3 = cand_
