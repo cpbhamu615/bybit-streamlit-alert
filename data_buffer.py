@@ -1,6 +1,16 @@
 # data_buffer.py
 
-from collections import defaultdict
+# Dictionary to store candle data and prices globally
+candle_data = {
+    "BTCUSDT": [],
+    "ETHUSDT": [],
+    "BNBUSDT": [],
+    "SOLUSDT": []
+}
 
-candle_data = defaultdict(list)
-prices = {}
+prices = {
+    "BTCUSDT": None,
+    "ETHUSDT": None,
+    "BNBUSDT": None,
+    "SOLUSDT": None
+}
