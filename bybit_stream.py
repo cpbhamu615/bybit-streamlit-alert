@@ -7,6 +7,7 @@ from data_buffer import candle_data, prices
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def on_message(ws, message):
+    print("MESSAGE RECEIVED:", message)  
     data = json.loads(message)
     if 'topic' not in data: return
     topic = data['topic']
