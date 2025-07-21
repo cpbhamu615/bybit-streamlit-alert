@@ -41,4 +41,20 @@ for sym in symbols:
         continue
 
     ref = candles[-4]
-    next_3 = cand_
+    next_3 = candles[-3:]   # ✅ Correct line here
+
+    high = float(ref["high"])
+    low = float(ref["low"])
+
+    all_inside = all(low <= float(c["low"]) and float(c["high"]) <= high for c in next_3)
+
+    if all_inside:
+        ts = datetime.fromtimestamp(ref["start"] / 1000, pytz.timezone("Asia/Kolkata"))
+        st.warning(
+            f"{sym} ALERT: 3 candles stayed inside range of {ts.strftime('%Y-%m-%d %H:%M:%S')} | "
+            f"High: {high} | Low: {low}"
+        )
+
+    st.markdown(f"#### 📊 {sym} Chart")
+    fig = plot_candles(sym, ref)
+    st.pyplot(fig)
