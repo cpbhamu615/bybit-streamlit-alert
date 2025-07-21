@@ -1,19 +1,13 @@
-# data_buffer.py
-import threading
+from collections import defaultdict, deque
 
 class CandleBuffer:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.candles = []
+    def __init__(self, size=50):
+        self.buffer = defaultdict(lambda: deque(maxlen=size))
 
-    def add_candle(self, candle):
-        with self.lock:
-            self.candles.append(candle)
-            if len(self.candles) > 100:  # store latest 100 candles
-                self.candles.pop(0)
+    def add_candle(self, symbol, candle):
+        self.buffer[symbol].append(candle)
 
-    def get_candles(self):
-        with self.lock:
-            return list(self.candles)
+    def get_candles(self, symbol):
+        return list(self.buffer[symbol])
 
 candle_buffer = CandleBuffer()
