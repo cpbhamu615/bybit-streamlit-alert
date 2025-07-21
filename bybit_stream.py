@@ -1,34 +1,45 @@
 # bybit_stream.py
 
-import json
-import threading
 import websocket
-from data_buffer import update_candles
+import json
+from threading import Thread
+from data_buffer import buffer
 
-symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-interval = "3"  # 3-minute candles
-candle_data = {}
+prices = {}
+candle_data = {
+    "BTCUSDT": [],
+    "ETHUSDT": [],
+    "BNBUSDT": [],
+    "SOLUSDT": []
+}
 
 def on_message(ws, message):
     msg = json.loads(message)
     if "topic" in msg and msg["topic"].startswith("kline"):
+        symbol = msg["topic"].split(".")[-1]
         data = msg["data"][0]
-        topic = msg["topic"]
-        symbol = topic.split(".")[-1]
-        update_candles(symbol, data)
+        candle_data[symbol] = candle_data.get(symbol, [])
+        candle_data[symbol].append(data)
+        if len(candle_data[symbol]) > 100:
+            candle_data[symbol] = candle_data[symbol][-100:]
+
+    elif "topic" in msg and msg["topic"].startswith("tickers"):
+        for ticker in msg["data"]:
+            prices[ticker["symbol"]] = ticker["last_price"]
 
 def on_open(ws):
-    print("✅ Connected to Bybit WebSocket")
+    print("✅ WebSocket connected")
+    symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
     for sym in symbols:
-        sub_msg = {
-            "op": "subscribe",
-            "args": [f"kline.{interval}.{sym}"]
-        }
-        ws.send(json.dumps(sub_msg))
+        ws.send(json.dumps({"op": "subscribe", "args": [f"kline.3.{sym}"]}))
+    ws.send(json.dumps({"op": "subscribe", "args": ["tickers.BTCUSDT", "tickers.ETHUSDT", "tickers.BNBUSDT", "tickers.SOLUSDT"]}))
 
 def start_websocket():
-    url = "wss://stream.bybit.com/v5/public/linear"
-    ws = websocket.WebSocketApp(url, on_open=on_open, on_message=on_message)
-    thread = threading.Thread(target=ws.run_forever)
-    thread.daemon = True
-    thread.start()
+    def run():
+        ws = websocket.WebSocketApp(
+            "wss://stream.bybit.com/v5/public/linear",
+            on_message=on_message,
+            on_open=on_open
+        )
+        ws.run_forever()
+    Thread(target=run).start()
