@@ -1,57 +1,50 @@
 # app.py
 import streamlit as st
-import pandas as pd
-import plotly.graph_objs as go
-import threading
 import time
-from data_buffer import candle_buffer
-from bybit_stream import start_websocket
+from bybit_stream import candle_data, start_websocket
+from datetime import datetime
 
-st.set_page_config(page_title="Live Bybit Alert", layout="wide")
-st.title("📡 Bybit 3-min Candle Breakout Alert")
+st.set_page_config(page_title="Crypto Alert Scanner", layout="centered")
+st.title("📈 Live Crypto Alert Scanner (3-min candles)")
 
-# Start WebSocket thread
-if 'started' not in st.session_state:
-    thread = threading.Thread(target=start_websocket)
-    thread.start()
-    st.session_state.started = True
-    st.success("🚀 Live data stream started!")
+# Start WebSocket background
+start_websocket()
 
-# Poll data every few seconds
-time.sleep(1)
-data = candle_buffer.get_candles()
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+selected_symbol = st.selectbox("🪙 Select Crypto", SYMBOLS)
 
-if len(data) >= 4:
-    df = pd.DataFrame(data)
-    alerts = []
-    i = 0
-    while i + 3 < len(df):
-        ref = df.iloc[i]
-        next3 = df.iloc[i+1:i+4]
+placeholder = st.empty()
 
-        if all((next3['high'] < ref['high']) & (next3['low'] > ref['low'])):
-            alerts.append(f"🔔 ALERT: No break after candle {ref['timestamp']}")
-            i += 4
-        else:
-            for j in range(1, 4):
-                if df.iloc[i+j]['high'] >= ref['high'] or df.iloc[i+j]['low'] <= ref['low']:
-                    i += j
-                    break
+def check_alert(candles):
+    if len(candles) < 4:
+        return None
 
-    # Plot
-    fig = go.Figure(data=[
-        go.Candlestick(
-            x=df['timestamp'],
-            open=df['open'],
-            high=df['high'],
-            low=df['low'],
-            close=df['close']
-        )
-    ])
-    st.plotly_chart(fig, use_container_width=True)
+    base = candles[-4]  # Candle to mark high/low from
+    check1 = candles[-3]
+    check2 = candles[-2]
+    check3 = candles[-1]
 
-    st.subheader("🚨 Alerts")
-    for alert in alerts[-5:]:
-        st.warning(alert)
-else:
-    st.info("⌛ Waiting for enough confirmed candles (need at least 4)...")
+    for c in [check1, check2, check3]:
+        if c["high"] > base["high"] or c["low"] < base["low"]:
+            return None  # No alert if broken
+
+    return base
+
+while True:
+    candles = candle_data[selected_symbol]
+
+    with placeholder.container():
+        st.subheader(f"Live Scan: {selected_symbol}")
+        st.write(f"🕒 Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        st.write(f"🕯️ Last candles received: {len(candles)}")
+
+        if len(candles) >= 4:
+            alert = check_alert(candles)
+            if alert:
+                st.error(f"🚨 Alert! Last 3 candles failed to break High/Low of candle at {datetime.utcfromtimestamp(alert['time']/1000).strftime('%H:%M')} UTC")
+            else:
+                st.success("✅ No valid alert yet")
+
+        st.line_chart([c["high"] for c in candles[-20:]])
+
+    time.sleep(5)
