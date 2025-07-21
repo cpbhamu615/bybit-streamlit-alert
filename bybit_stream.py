@@ -1,36 +1,61 @@
-# app.py
+# bybit_stream.py
 
-import streamlit as st
-import time
-from bybit_stream import candle_data, start_websocket
+import websocket
+import json
+import threading
 
-st.title("🚀 Live Multi-Crypto Alert System")
+candle_data = {
+    "BTCUSDT": [],
+    "ETHUSDT": [],
+    "BNBUSDT": [],
+    "SOLUSDT": []
+}
 
-start_websocket()
+symbol_list = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
-symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-selected_symbol = st.selectbox("Select Symbol", symbols)
+def on_message(ws, message):
+    data = json.loads(message)
+    topic = data.get("topic")
+    if topic:
+        symbol = topic.split(".")[-1]
+        kline = data["data"][0]
 
-placeholder = st.empty()
+        if kline["confirm"]:
+            candle_data[symbol].append({
+                "timestamp": kline["start"],
+                "open": float(kline["open"]),
+                "high": float(kline["high"]),
+                "low": float(kline["low"]),
+                "close": float(kline["close"])
+            })
 
-def check_alert(symbol):
-    candles = candle_data.get(symbol, [])
-    if len(candles) < 4:
-        return None
+            # Limit to last 100 candles
+            if len(candle_data[symbol]) > 100:
+                candle_data[symbol] = candle_data[symbol][-100:]
 
-    marked = candles[-4]
-    next_3 = candles[-3:]
+def on_open(ws):
+    print("✅ Connected to Bybit WebSocket")
+    for symbol in symbol_list:
+        payload = {
+            "op": "subscribe",
+            "args": [f"kline.3.{symbol}"]
+        }
+        ws.send(json.dumps(payload))
 
-    high = marked["high"]
-    low = marked["low"]
+def on_error(ws, error):
+    print("❌ WebSocket error:", error)
 
-    for c in next_3:
-        if c["high"] > high or c["low"] < low:
-            return None
-    return marked["time"]
+def on_close(ws, close_status_code, close_msg):
+    print("🔌 WebSocket closed")
 
-while True:
-    alert_time = check_alert(selected_symbol)
-    if alert_time:
-        placeholder.error(f"🚨 Alert: {selected_symbol} did NOT break {alert_time} high/low in next 3 candles!")
-    time.sleep(5)
+def start_websocket():
+    ws = websocket.WebSocketApp(
+        "wss://stream.bybit.com/v5/public/linear",
+        on_open=on_open,
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close
+    )
+    thread = threading.Thread(target=ws.run_forever)
+    thread.daemon = True
+    thread.start()
