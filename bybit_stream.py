@@ -9,11 +9,10 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 def on_message(ws, message):
     data = json.loads(message)
     if 'topic' not in data: return
-
     topic = data['topic']
 
-    if topic.startswith("kline.3m."):
-        symbol = topic.split(".")[-1]
+    if topic.startswith("kline.3."):
+        symbol = topic.split('.')[-1]
         k = data["data"]
         candle = {
             "timestamp": k["start"],
@@ -34,7 +33,7 @@ def on_message(ws, message):
                 prices[symbol] = float(t["lastPrice"])
 
 def on_open(ws):
-    args = [f"kline.3m.{s}" for s in SYMBOLS]
+    args = [f"kline.3.{s}" for s in SYMBOLS]
     args += [f"tickers.{s}" for s in SYMBOLS]
     ws.send(json.dumps({"op": "subscribe", "args": args}))
 
